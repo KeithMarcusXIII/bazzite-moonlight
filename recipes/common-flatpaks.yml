@@ -13,4 +13,5 @@ configurations:
       - com.google.AndroidStudio
       - io.github.realmazharhussain.GdmSettings
       - it.mijorus.gearlever
+      - org.vscodium.codium
   - scope: user # Also add Flathub user repo, but no user packages
