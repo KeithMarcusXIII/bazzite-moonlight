@@ -12,7 +12,7 @@ install:
     - mise
 remove:
   packages:
-    - virt-manager
+    # - virt-manager
     - hhd
     - hhd-ui
-    - vscode
+    # - vscode
