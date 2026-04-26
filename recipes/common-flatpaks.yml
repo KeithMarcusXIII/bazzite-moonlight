@@ -12,4 +12,5 @@ configurations:
       - org.libreoffice.LibreOffice
       - com.google.AndroidStudio
       - io.github.realmazharhussain.GdmSettings
+      - it.mijorus.gearlever
   - scope: user # Also add Flathub user repo, but no user packages
