@@ -3,4 +3,5 @@ cosign.private
 /Containerfile
 .agent
 .agents
-_bmad*
+_bmad**
+.bluebuild-scripts_*
