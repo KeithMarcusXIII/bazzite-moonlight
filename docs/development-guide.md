@@ -25,6 +25,22 @@ git clone https://github.com/keithmarcusxiii/bazzite-moonlight.git
 cd bazzite-moonlight
 ```
 
+### Initialize the Dotfiles Subtree
+
+The dotfiles repository at `dotfiles/` is managed as a git subtree (referenced in the chezmoi recipe [`common-dotfiles.yml`](../recipes/common-dotfiles.yml)). After cloning the main project, add the subtree the first time:
+
+```bash
+# First-time setup — registers the subtree in the host repo:
+git subtree add --prefix=dotfiles https://github.com/KeithMarcusXIII/dotfiles.git main
+
+# Subsequent updates — pull latest changes from the dotfiles remote:
+git subtree pull --prefix=dotfiles https://github.com/KeithMarcusXIII/dotfiles.git main
+```
+
+`git subtree add` creates the `dotfiles/` directory and registers it as a subtree in the host repo. After that, `git subtree pull` fetches updates. Changes made inside `dotfiles/` should be committed and pushed from within that directory — the subtree maintains its own history on GitHub.
+
+> **Note:** The `dotfiles/` directory with its own `.git` is tracked as a single merge commit in the host repo. The dotfiles repo's full history remains on GitHub and is only squashed into the host on add/pull.
+
 ### Repository Configuration
 
 The primary build pipeline runs in GitHub Actions. However, **local builds are fully supported** via the [`bluebuild` CLI](https://blue-build.org/how-to/local/) — enabling fast iteration without waiting for CI, and working around intermittent network or daemon issues.
