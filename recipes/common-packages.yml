@@ -8,10 +8,10 @@ repos:
       - jdxcode/mise
 install:
   packages:
-    - stow
     - papirus-icon-theme
     - mise
 remove:
   packages:
+    - virt-manager
     - hhd
     - hhd-ui
