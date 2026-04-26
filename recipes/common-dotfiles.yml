@@ -1,0 +1,7 @@
+---
+# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
+
+type: chezmoi
+repository: "https://github.com/KeithMarcusXIII/dotfiles.git" # my dotfiles repo
+all-users: true # auto-enable chezmoi-init.service + chezmoi-update.timer for all users
+file-conflict-policy: replace # override changed files with those from the repo

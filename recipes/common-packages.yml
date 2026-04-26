@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
+
+type: dnf
+repos:
+  copr:
+    enable:
+      # - atim/starship
+      - jdxcode/mise
+install:
+  packages:
+    - stow
+    - papirus-icon-theme
+    - mise
+remove:
+  packages:
+    - hhd
+    - hhd-ui
