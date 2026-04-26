@@ -15,4 +15,5 @@ remove:
     # - virt-manager
     - hhd
     - hhd-ui
-    # - vscode
+    - vscode
+  auto-remove: true
