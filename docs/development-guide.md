@@ -219,11 +219,155 @@ The [`bluebuild` CLI](https://blue-build.org/how-to/local/) enables building ima
 
 #### Step-by-Step: Deploy to the Test VM
 
-The test VM (`192.168.30.171` / `bazzite.local.keithmarcus.com`) is an existing Proxmox VM with a Bazzite installation. Two deployment strategies are available.
+The test VM (`192.168.30.171` / `bazzite.local.keithmarcus.com`) is an existing Proxmox VM with a Bazzite installation. Three deployment strategies are available, listed from lowest to highest latency.
 
-##### Strategy A: Push to local registry then rebase (recommended)
+```mermaid
+flowchart LR
+    subgraph Mac["MacBook Pro Mac15,3"]
+        BB["bluebuild CLI"]
+    end
 
-This approach pushes the locally-built image to an on-VM container registry, then rebases the VM's OS to it.
+    subgraph Registry["Existing LAN Registry"]
+        REG["registry.home.keithmarcus.com"]
+        IP["192.168.20.7:80"]
+    end
+
+    subgraph VM["Bazzite VM 192.168.30.171"]
+        PULL["podman pull from registry"]
+        REBASE["rpm-ostree rebase"]
+        PULL --> REBASE
+    end
+
+    BB -->|podman push| REG
+    REG -->|podman pull| PULL
+```
+
+##### Strategy C: Push to existing LAN registry — lowest latency, recommended
+
+This strategy leverages the existing container registry at `registry.home.keithmarcus.com` (reverse-proxied by Caddy, upstream at `192.168.20.7:80`). The Mac pushes the locally-built image to it, and the Bazzite VM pulls directly over the LAN. No image data touches the internet, layers are cached, and incremental rebuilds transfer only changed layers.
+
+###### Push Target
+
+You have two ways to address the registry:
+
+| Endpoint | Type | Notes |
+|----------|------|-------|
+| `registry.home.keithmarcus.com` | Hostname with TLS | Caddy reverse-proxy with auto TLS. Preferred — works with default podman settings. Verify TLS: `curl -v https://registry.home.keithmarcus.com/v2/` — a valid response confirms TLS is operational. |
+| `192.168.20.7:80` | Raw LAN IP | Plain HTTP. Requires configuring the destination as an insecure registry or using `--tls-verify=false` with appropriate registries.conf entry. |
+
+###### Build and Push to Registry
+
+The image reference must include the registry address — `localhost/name:tag` doesn't tell `podman` or `docker` where to push. Two approaches:
+
+**Option A: Tag then push** (explicit, two commands)
+
+```bash
+# 1. Build the image locally
+cd bazzite-moonlight
+bluebuild build recipes/recipe.yml
+
+# 2. Tag with registry prefix and push
+podman tag localhost/bazzite-moonlight:latest \
+  registry.home.keithmarcus.com/bazzite-moonlight:latest
+podman push registry.home.keithmarcus.com/bazzite-moonlight:latest
+
+# OR via LAN IP
+podman tag localhost/bazzite-moonlight:latest \
+  192.168.20.7:80/bazzite-moonlight:latest
+podman push --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
+```
+
+**Option B: Push with destination URI** (single command, podman only)
+
+```bash
+podman push localhost/bazzite-moonlight:latest \
+  docker://registry.home.keithmarcus.com/bazzite-moonlight:latest
+
+# OR via LAN IP
+podman push localhost/bazzite-moonlight:latest \
+  docker://192.168.20.7:80/bazzite-moonlight:latest
+```
+
+> **Docker Desktop variant:** If using `docker` instead of `podman` on the Mac, the `--tls-verify=false` flag is not available and the `docker://` URI isn't needed. For HTTP registries, configure Docker Desktop to trust the address:
+> ```bash
+> docker tag localhost/bazzite-moonlight:latest \
+>   registry.home.keithmarcus.com/bazzite-moonlight:latest
+> docker push registry.home.keithmarcus.com/bazzite-moonlight:latest
+>
+> # OR via LAN IP — requires daemon.json config first (see below)
+> docker tag localhost/bazzite-moonlight:latest \
+>   192.168.20.7:80/bazzite-moonlight:latest
+> docker push 192.168.20.7:80/bazzite-moonlight:latest
+> ```
+>
+> **Docker Desktop insecure registry config:** To push to the LAN IP over HTTP, add it to Docker Engine config:
+> 1. Open Docker Desktop → Settings → Docker Engine
+> 2. Add to the JSON:
+>    ```json
+>    {
+>      "insecure-registries": ["192.168.20.7:80"]
+>    }
+>    ```
+> 3. Click **Apply & Restart**
+>
+> The hostname endpoint (`registry.home.keithmarcus.com`) works without this step because Caddy provides TLS.
+
+> **Container networking note:** If `bluebuild` runs inside a docker-compose container, the built image may reside in the container's storage. Export it to the host first:
+> ```bash
+> # Using podman on the host
+> docker-compose -p local -f /Users/digitsolu/local/compose.yaml \
+>   exec -w /bluebuild/bazzite-moonlight bluebuild \
+>   podman save localhost/bazzite-moonlight:latest | \
+>   podman load
+> podman tag localhost/bazzite-moonlight:latest registry.home.keithmarcus.com/bazzite-moonlight:latest
+> podman push registry.home.keithmarcus.com/bazzite-moonlight:latest
+>
+> # Using docker on the host — replace podman with docker
+> docker-compose -p local -f /Users/digitsolu/local/compose.yaml \
+>   exec -w /bluebuild/bazzite-moonlight bluebuild \
+>   docker save localhost/bazzite-moonlight:latest | \
+>   docker load
+> docker tag localhost/bazzite-moonlight:latest registry.home.keithmarcus.com/bazzite-moonlight:latest
+> docker push registry.home.keithmarcus.com/bazzite-moonlight:latest
+> ```
+
+###### Pull and Rebase on the Destination
+
+On the Bazzite VM, pull from the LAN registry and rebase:
+
+```bash
+# Pull via hostname (TLS via Caddy)
+podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
+
+# OR pull via LAN IP
+podman pull --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
+
+# Then rebase to the locally-pulled image
+rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
+systemctl reboot
+```
+
+###### Incremental Rebuilds
+
+On subsequent changes, only modified layers transfer:
+
+```bash
+# Rebuild and push on Mac
+bluebuild build recipes/recipe.yml
+podman tag localhost/bazzite-moonlight:latest registry.home.keithmarcus.com/bazzite-moonlight:latest
+podman push registry.home.keithmarcus.com/bazzite-moonlight:latest
+
+# On Bazzite VM — pulls only changed layers
+podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
+rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
+systemctl reboot
+```
+
+> **Why this is fastest:** The registry is OCI-native — layer hashes are compared before transfer. Only layers that actually changed (e.g., a new RPM package) cross the LAN. The base image layers from `ghcr.io/ublue-os/bazzite-dx-gnome:stable` are also cached in the registry after the first push, so they never re-transfer to the VM either.
+
+##### Strategy A: Tarball transfer via SSH
+
+This approach serializes the full image to a tarball and pipes it over SSH. Useful as a fallback when a registry isn't available.
 
 1. **Transfer the image** to the test VM via `podman` over SSH:
 
@@ -277,10 +421,14 @@ When network conditions are poor, or `bluebuild` / `rpm-ostree` exhibit bugs tha
 
 | Symptom | Likely Cause | Workaround |
 |---------|-------------|------------|
-| `rpm-ostree rebase` hangs during layer pull | Network congestion / registry throttling | Use **Strategy B**: `podman pull` the base image first, then rebase to `containers-storage:` |
+| `rpm-ostree rebase` hangs during layer pull | Network congestion / registry throttling | Use **Strategy B**: `podman pull` base image first, then rebase to `containers-storage:` |
 | `bluebuild build` fails on image pull | Transient podman/registry issue | Retry with `podman pull` for the base image independently, then re-run `bluebuild build` |
 | Image layers repeatedly stuck | `rpm-ostree` or `podman` bug (UNCONFIRMED) | Clear local storage: `podman system prune -a`, then rebuild from scratch |
 | Cannot reach `bazzite.local.keithmarcus.com` | DNS / mDNS failure | Use IP directly: `ssh 192.168.30.171` |
+| `podman push registry.home.keithmarcus.com/...` fails with `x509` cert error | Caddy TLS certificate issue | If using Let's Encrypt staging or self-signed cert, add `--tls-verify=false` to push/pull commands. For production LE certs, no flag needed. |
+| `podman push 192.168.20.7:80/...` fails with `pinging container registry` error | Podman refuses HTTP registries by default | Add `192.168.20.7:80` as an insecure registry: `sudo sh -c 'echo "unqualified-search-registries = [\"docker.io\"]" > /etc/containers/registries.conf.d/local.conf && echo "[[registry]]\nlocation=\"192.168.20.7:80\"\ninsecure=true" >> /etc/containers/registries.conf.d/local.conf'`. Or use the hostname endpoint instead. |
+| `podman pull registry.home.keithmarcus.com/...` hangs or times out | DNS cannot resolve the hostname from the VM | Check DNS on the Bazzite VM: `dig registry.home.keithmarcus.com`. If unresolved, add a static `/etc/hosts` entry: `192.168.20.7 registry.home.keithmarcus.com` or use the LAN IP endpoint directly. |
+| Built image not visible on host after `bluebuild build` | Image lives in docker-compose container storage | Export: `docker-compose exec ... podman save ... \| podman load` (see container note in Strategy C) |
 
 ### Signature Verification
 
