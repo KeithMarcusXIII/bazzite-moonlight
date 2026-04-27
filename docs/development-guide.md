@@ -313,37 +313,68 @@ docker push 192.168.20.7:80/bazzite-moonlight:latest
 
 ###### Pull and Rebase on the Destination
 
-On the Bazzite VM, pull from the LAN registry, retag for `containers-storage:`, and rebase:
+On the Bazzite VM, rebase directly from the LAN registry. **Two approaches**, listed in order of preference:
+
+###### Approach 1: Direct Registry Rebase (Recommended)
+
+`rpm-ostree` supports the `registry:` transport, which pulls the image directly from the container registry — no `podman pull`, no retag, no `containers-storage:` needed:
 
 ```bash
-# Pull via hostname (TLS via Caddy)
-podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
+# Rebase directly from the LAN registry
+rpm-ostree rebase ostree-unverified-image:registry:registry.home.keithmarcus.com/bazzite-moonlight:latest
+systemctl reboot
 
-# Verify the pulled image is x86_64 before rebasing
-podman inspect registry.home.keithmarcus.com/bazzite-moonlight:latest \
+# OR rebase via LAN IP — requires --tls-verify=false
+rpm-ostree rebase ostree-unverified-image:registry:192.168.20.7:80/bazzite-moonlight:latest
+systemctl reboot
+```
+
+> **Why this is preferred:** The `registry:` transport avoids the `containers-storage:` pitfalls entirely — no duplicate image storage, no `sudo` required, no root vs user storage confusion. rpm-ostree pulls and deploys directly.
+
+###### Approach 2: Podman Pull + containers-storage (Fallback)
+
+If the registry is unreachable from `rpm-ostree` (e.g., TLS/Cert trust issues), pull the image into podman storage first, then rebase via `containers-storage:`.
+
+> **⚠️ Root storage caveat:** `rpm-ostree` reads from **root's** podman storage (`/var/lib/containers/storage`), NOT the user's (`~/.local/share/containers/storage`). All `podman pull` commands must use `sudo` or the image will be invisible to `rpm-ostree`.
+
+```bash
+# Pull into root's storage (sudo is required)
+sudo podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
+
+# Verify architecture
+sudo podman inspect registry.home.keithmarcus.com/bazzite-moonlight:latest \
   --format '{{.Architecture}}'
 # Must output: amd64
 
-# ⚠️ CRITICAL: containers-storage: transport requires localhost/ prefix.
-# Retag the pulled image so rpm-ostree can find it in local storage.
-podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest \
+# ⚠️ containers-storage: transport requires localhost/ prefix
+sudo podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest \
   localhost/bazzite-moonlight:latest
 
-# Rebase to the retagged local image
+# Rebase from root's containers-storage
 rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
 systemctl reboot
 
 # OR pull via LAN IP — same retag required
-podman pull --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
-podman tag 192.168.20.7:80/bazzite-moonlight:latest localhost/bazzite-moonlight:latest
+sudo podman pull --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
+sudo podman tag 192.168.20.7:80/bazzite-moonlight:latest localhost/bazzite-moonlight:latest
 rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
 systemctl reboot
 ```
 
-> **Why retag?** The `containers-storage:` transport in `rpm-ostree` does not accept registry-prefixed references like `registry.home.keithmarcus.com/name:tag`. Images must be tagged with a `localhost/` prefix (e.g., `localhost/bazzite-moonlight:latest`) for `rpm-ostree` to find them in local podman storage. Attempting to rebase without retagging produces:
+> **Why retag?** The `containers-storage:` transport in `rpm-ostree` does not accept registry-prefixed references like `registry.home.keithmarcus.com/name:tag`. Images must be tagged with a `localhost/` prefix (e.g., `localhost/bazzite-moonlight:latest`) for `rpm-ostree` to find them in root's podman storage. Attempting to rebase without retagging produces:
 > ```
 > error: reference "registry.home.keithmarcus.com/bazzite-moonlight:latest" does not resolve to an image ID
 > ```
+
+> **Why `sudo`?** User-space `podman pull` stores images in `~/.local/share/containers/storage`. `rpm-ostree` reads from `/var/lib/containers/storage` (root's storage). An image pulled without `sudo` will produce:
+> ```
+> error: Old and new refs are equal: ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
+> ```
+> Or, if you try a different tag:
+> ```
+> error: reference "localhost/bazzite-moonlight:v2" does not resolve to an image ID
+> ```
+> Both errors indicate rpm-ostree cannot see the image you pulled. Always use `sudo podman` when preparing images for `containers-storage:` rebase.
 
 ###### Incremental Rebuilds
 
@@ -355,26 +386,25 @@ bluebuild build recipes/recipe.yml --platform linux/amd64
 docker tag localhost/bazzite-moonlight:latest registry.home.keithmarcus.com/bazzite-moonlight:latest
 docker push registry.home.keithmarcus.com/bazzite-moonlight:latest
 
-# On Bazzite VM — pull, retag, rebase (podman)
-podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
-podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest \
-  localhost/bazzite-moonlight:latest
-rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
+# On Bazzite VM — direct registry rebase (no podman pull needed)
+rpm-ostree rebase ostree-unverified-image:registry:registry.home.keithmarcus.com/bazzite-moonlight:latest
 systemctl reboot
 ```
 
-> **Why this is fastest:** The registry is OCI-native — layer hashes are compared before transfer. Only layers that actually changed (e.g., a new RPM package) cross the LAN. The base image layers from `ghcr.io/ublue-os/bazzite-dx-gnome:stable` are also cached in the registry after the first push, so they never re-transfer to the VM either.
+> **Why this is fastest:** The registry is OCI-native — layer hashes are compared before transfer. Only layers that actually changed (e.g., a new RPM package) cross the LAN. The base image layers from `ghcr.io/ublue-os/bazzite-dx-gnome:stable` are also cached in the registry after the first push, so they never re-transfer to the VM either. The `registry:` transport in rpm-ostree pulls directly without requiring an intermediate `podman pull` step — one command end-to-end.
 
 ##### Strategy A: Tarball transfer via SSH
 
-This approach serializes the full image to a tarball and pipes it over SSH. Useful as a fallback when a registry isn't available. Uses `docker save` on the Mac, `podman load` on the VM — the OCI format is compatible across both.
+This approach serializes the full image to a tarball and pipes it over SSH. Useful as a fallback when a registry isn't available. Uses `docker save` on the Mac, `sudo podman load` on the VM — the OCI format is compatible across both.
+
+> **⚠️ Root storage:** `docker save` outputs to stdout, which `ssh` pipes into the VM's `podman load`. On the VM side, images load into the user's podman storage. However, `rpm-ostree` reads from **root's** containers-storage. Use `sudo podman load` so the image lands in root's storage where rpm-ostree can find it.
 
 1. **Transfer the image** to the test VM via SSH:
 
    ```bash
-   # Save the image from colima/docker on Mac, load into podman on VM
+   # Save from colima/docker on Mac, load into root's podman on VM
    docker save localhost/bazzite-moonlight:latest | \
-     ssh bazzite.local.keithmarcus.com podman load
+     ssh bazzite.local.keithmarcus.com sudo podman load
    ```
 
 2. **On the test VM**, rebase to the local image:
@@ -401,11 +431,11 @@ When network conditions are poor, or `bluebuild` / `rpm-ostree` exhibit bugs tha
 2. **On the test VM**, manually pull the base layers (if needed) and load the custom image:
 
    ```bash
-   # Pull the base image separately (retry-friendly)
-   podman pull ghcr.io/ublue-os/bazzite-dx-gnome:stable
+   # Pull the base image separately (retry-friendly) — use sudo for root storage
+   sudo podman pull ghcr.io/ublue-os/bazzite-dx-gnome:stable
 
-   # Load the locally-built overlay
-   podman load < bazzite-moonlight.tar
+   # Load the locally-built overlay into root's storage (sudo required)
+   sudo podman load < bazzite-moonlight.tar
    ```
 
 3. **Rebase** to the local image:
@@ -417,19 +447,24 @@ When network conditions are poor, or `bluebuild` / `rpm-ostree` exhibit bugs tha
 
    This approach separates the base-image pull (which can be retried independently) from the rebase, avoiding the common hang where `rpm-ostree` gets stuck mid-pull.
 
+> **Why `sudo` in this workflow?** Same reason as Strategy C — rpm-ostree reads root's `/var/lib/containers/storage`, not the user's `~/.local/share/containers/storage`. Without `sudo`, `podman load` or `podman pull` puts the image in user storage, and `rpm-ostree redeploy ...` will fail with `Old and new refs are equal` or `does not resolve to an image ID`.
+
 #### Troubleshooting Network & Daemon Issues
 
 | Symptom | Likely Cause | Workaround |
 |---------|-------------|------------|
-| `rpm-ostree rebase` hangs during layer pull | Network congestion / registry throttling | Use **Strategy B**: `podman pull` base image first, then rebase to `containers-storage:` |
+| `rpm-ostree rebase` hangs during layer pull | Network congestion / registry throttling | Use **Strategy B**: `sudo podman pull` base image first, then rebase to `containers-storage:` |
 | `bluebuild build` fails on image pull | Transient registry issue | Retry with `docker pull ghcr.io/ublue-os/bazzite-dx-gnome:stable` then re-run `bluebuild build` |
-| Image layers repeatedly stuck | `rpm-ostree` or `podman` bug (UNCONFIRMED) | Clear VM storage: `podman system prune -a`, then rebuild from Mac |
+| Image layers repeatedly stuck | `rpm-ostree` or `podman` bug (UNCONFIRMED) | Clear VM storage: `sudo podman system prune -a`, then rebuild from Mac |
 | Cannot reach `bazzite.local.keithmarcus.com` | DNS / mDNS failure | Use IP directly: `ssh 192.168.30.171` |
 | `docker push registry.home.keithmarcus.com/...` fails with `x509` cert error | Caddy TLS certificate issue | If using Let's Encrypt staging or self-signed cert, use the LAN IP endpoint instead, or fix Caddy's TLS config |
 | `docker push 192.168.20.7:80/...` fails with `http: server gave HTTP response to HTTPS client` | Docker requires `insecure-registries` config for HTTP | Add `192.168.20.7:80` to `~/.colima/default/colima.yaml` under `docker.insecure-registries`, then `colima restart`. Or use the hostname endpoint instead. |
 | `podman pull registry.home.keithmarcus.com/...` hangs or times out | DNS cannot resolve the hostname from the VM | Check DNS on the Bazzite VM: `dig registry.home.keithmarcus.com`. If unresolved, add a static `/etc/hosts` entry: `192.168.20.7 registry.home.keithmarcus.com` or use the LAN IP endpoint directly. |
 | Built image not visible on host after `bluebuild build` | Image lives in docker-compose container storage | Export: `docker-compose exec ... docker save ... \| docker load` (see container note in Strategy C) |
-| `rpm-ostree rebase` fails with `reference "registry.home.keithmarcus.com/...:latest" does not resolve to an image ID` | `containers-storage:` transport does not accept registry-prefixed image references | Retag the pulled image: `podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest localhost/bazzite-moonlight:latest`. Then rebase to `ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest`. |
+| `rpm-ostree rebase` fails with `reference "registry.home.keithmarcus.com/...:latest" does not resolve to an image ID` | `containers-storage:` transport does not accept registry-prefixed image references | Retag the pulled image: `sudo podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest localhost/bazzite-moonlight:latest`. Then rebase to `ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest`. |
+| `rpm-ostree rebase` fails with `Old and new refs are equal` | Image in root's containers-storage is identical to the current deployment (image was pulled into user storage instead) | Either use the `registry:` transport directly: `rpm-ostree rebase ostree-unverified-image:registry:registry.home.keithmarcus.com/bazzite-moonlight:latest`, OR pull into root's storage: `sudo podman pull ... && rpm-ostree upgrade` |
+| `rpm-ostree rebase` fails with `does not resolve to an image ID` for a locally-tagged image | The tag exists in user podman storage but not in root's containers-storage where rpm-ostree looks | Verify: `sudo podman image ls localhost/bazzite-moonlight`. Retag with `sudo podman tag` if missing. Always use `sudo podman` for image preparation. |
+| `rpm-ostree upgrade` fails with `min-free-space-percent '3%' would be exceeded` | Insufficient disk space on the Bazzite VM for the new deployment | Free space: `rpm-ostree cleanup -r` (remove rolled-back deployments), then `sudo podman system prune -a` (remove unused images). Retry `rpm-ostree upgrade`. |
 | `WARNING: image platform (linux/arm64) does not match the expected platform (linux/amd64)` | Built on `arm64` Mac without `--platform linux/amd64` | Rebuild with `bluebuild build recipes/recipe.yml --platform linux/amd64`. Verify with `docker inspect ... --format '{{.Architecture}}'` — must be `amd64`. |
 | Cross-arch build fails with `exec format error` | Colima missing x86_64 emulation support | Ensure colima config has `rosetta: true` and `binfmt: true`. Verify: `docker run --rm --platform linux/amd64 alpine uname -m` — should output `x86_64`. If not, `colima delete && colima start --arch host --vm-type vz --rosetta`. |
 
