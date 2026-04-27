@@ -197,24 +197,34 @@ The [`bluebuild` CLI](https://blue-build.org/how-to/local/) enables building ima
 | Requirement | Notes |
 |-------------|-------|
 | `bluebuild` CLI | Install from [blue-build.org](https://blue-build.org/how-to/local/) |
-| `podman` | Required by bluebuild for local image builds |
+| `podman` or `docker` | Required for local image builds and pushing |
 | Local Bazzite VM | Proxmox VM at `192.168.30.171` / `bazzite.local.keithmarcus.com` |
+| Cross-arch emulation | Build host is `arm64` (Apple Silicon); target is `x86_64`. Requires `--platform linux/amd64` on all build commands (see below) |
 
 #### Step-by-Step: Build Locally
 
-1. **Build the image** from the recipe:
+1. **Build the image** from the recipe, targeting `x86_64`:
 
    ```bash
    cd bazzite-moonlight
-   bluebuild build recipes/recipe.yml
+   bluebuild build recipes/recipe.yml --platform linux/amd64
+   ```
+
+   If `bluebuild` does not support `--platform`, use the environment variable instead:
+   ```bash
+   DOCKER_DEFAULT_PLATFORM=linux/amd64 bluebuild build recipes/recipe.yml
    ```
 
    This produces a local container image tagged `bazzite-moonlight:latest` in the local container storage.
 
-2. **Verify the image exists locally:**
+2. **Verify the image exists locally and check its architecture:**
 
    ```bash
    podman images localhost/bazzite-moonlight
+
+   # Confirm the image is amd64, not arm64
+   podman inspect localhost/bazzite-moonlight:latest --format '{{.Architecture}}'
+   # Must output: amd64
    ```
 
 #### Step-by-Step: Deploy to the Test VM
@@ -223,8 +233,10 @@ The test VM (`192.168.30.171` / `bazzite.local.keithmarcus.com`) is an existing 
 
 ```mermaid
 flowchart LR
-    subgraph Mac["MacBook Pro Mac15,3"]
+    subgraph Mac["MacBook Pro Mac15,3 - arm64"]
         BB["bluebuild CLI"]
+        ARCH["--platform linux/amd64"]
+        BB -->|builds| ARCH
     end
 
     subgraph Registry["Existing LAN Registry"]
@@ -232,19 +244,25 @@ flowchart LR
         IP["192.168.20.7:80"]
     end
 
-    subgraph VM["Bazzite VM 192.168.30.171"]
+    subgraph VM["Bazzite VM 192.168.30.171 - x86_64"]
         PULL["podman pull from registry"]
         REBASE["rpm-ostree rebase"]
         PULL --> REBASE
     end
 
-    BB -->|podman push| REG
+    ARCH -->|podman push x86_64 image| REG
     REG -->|podman pull| PULL
 ```
 
 ##### Strategy C: Push to existing LAN registry — lowest latency, recommended
 
 This strategy leverages the existing container registry at `registry.home.keithmarcus.com` (reverse-proxied by Caddy, upstream at `192.168.20.7:80`). The Mac pushes the locally-built image to it, and the Bazzite VM pulls directly over the LAN. No image data touches the internet, layers are cached, and incremental rebuilds transfer only changed layers.
+
+> **⚠️ Architecture mismatch:** The build host (`arm64` Apple Silicon) and deployment target (`x86_64`) differ. Without specifying `--platform linux/amd64`, `bluebuild` produces an `arm64` image that the Bazzite VM cannot run — resulting in:
+> ```
+> WARNING: image platform (linux/arm64) does not match the expected platform (linux/amd64)
+> ```
+> All build and push commands below include `--platform linux/amd64` to force cross-architecture compilation. Docker Desktop on Apple Silicon supports this via Rosetta emulation; `podman` uses `qemu-user-static`. Verify emulation is available with `podman run --rm --platform linux/amd64 alpine uname -m` (should output `x86_64`).
 
 ###### Push Target
 
@@ -262,11 +280,15 @@ The image reference must include the registry address — `localhost/name:tag` d
 **Option A: Tag then push** (explicit, two commands)
 
 ```bash
-# 1. Build the image locally
+# 1. Build the image for x86_64 target
 cd bazzite-moonlight
-bluebuild build recipes/recipe.yml
+bluebuild build recipes/recipe.yml --platform linux/amd64
 
-# 2. Tag with registry prefix and push
+# 2. Verify the image architecture
+podman inspect localhost/bazzite-moonlight:latest --format '{{.Architecture}}'
+# Must output: amd64
+
+# 3. Tag with registry prefix and push
 podman tag localhost/bazzite-moonlight:latest \
   registry.home.keithmarcus.com/bazzite-moonlight:latest
 podman push registry.home.keithmarcus.com/bazzite-moonlight:latest
@@ -288,8 +310,22 @@ podman push localhost/bazzite-moonlight:latest \
   docker://192.168.20.7:80/bazzite-moonlight:latest
 ```
 
-> **Docker Desktop variant:** If using `docker` instead of `podman` on the Mac, the `--tls-verify=false` flag is not available and the `docker://` URI isn't needed. For HTTP registries, configure Docker Desktop to trust the address:
+> **🔧 Platform flag alternatives:** If `bluebuild build --platform` is not supported:
 > ```bash
+> # Force via environment variable
+> DOCKER_DEFAULT_PLATFORM=linux/amd64 bluebuild build recipes/recipe.yml
+> ```
+> Or build directly with `podman build` after `bluebuild` generates the Containerfile:
+> ```bash
+> podman build --platform linux/amd64 -t localhost/bazzite-moonlight:latest .
+> ```
+
+> **Docker Desktop variant:** If using `docker` instead of `podman` on the Mac, the `--tls-verify=false` flag is not available and the `docker://` URI isn't needed. Docker Desktop on Apple Silicon emulates x86_64 via Rosetta — ensure "Use Rosetta for x86/amd64 emulation on Apple Silicon" is enabled in Docker Desktop → Settings → General.
+> ```bash
+> # Build for x86_64
+> docker build --platform linux/amd64 -t localhost/bazzite-moonlight:latest .
+>
+> # Tag and push
 > docker tag localhost/bazzite-moonlight:latest \
 >   registry.home.keithmarcus.com/bazzite-moonlight:latest
 > docker push registry.home.keithmarcus.com/bazzite-moonlight:latest
@@ -312,7 +348,7 @@ podman push localhost/bazzite-moonlight:latest \
 >
 > The hostname endpoint (`registry.home.keithmarcus.com`) works without this step because Caddy provides TLS.
 
-> **Container networking note:** If `bluebuild` runs inside a docker-compose container, the built image may reside in the container's storage. Export it to the host first:
+> **Container networking note:** If `bluebuild` runs inside a docker-compose container, the built image may reside in the container's storage. Export it to the host first. **Ensure `--platform linux/amd64` is passed during the build inside the container** so the exported image targets the correct architecture:
 > ```bash
 > # Using podman on the host
 > docker-compose -p local -f /Users/digitsolu/local/compose.yaml \
@@ -339,8 +375,15 @@ On the Bazzite VM, pull from the LAN registry and rebase:
 # Pull via hostname (TLS via Caddy)
 podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
 
-# OR pull via LAN IP
+# Verify the pulled image is x86_64 before rebasing
+podman inspect registry.home.keithmarcus.com/bazzite-moonlight:latest \
+  --format '{{.Architecture}}'
+# Must output: amd64
+
+# OR pull via LAN IP and verify
 podman pull --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
+podman inspect 192.168.20.7:80/bazzite-moonlight:latest \
+  --format '{{.Architecture}}'
 
 # Then rebase to the locally-pulled image
 rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
@@ -352,8 +395,8 @@ systemctl reboot
 On subsequent changes, only modified layers transfer:
 
 ```bash
-# Rebuild and push on Mac
-bluebuild build recipes/recipe.yml
+# Rebuild and push on Mac — always include --platform
+bluebuild build recipes/recipe.yml --platform linux/amd64
 podman tag localhost/bazzite-moonlight:latest registry.home.keithmarcus.com/bazzite-moonlight:latest
 podman push registry.home.keithmarcus.com/bazzite-moonlight:latest
 
@@ -429,6 +472,8 @@ When network conditions are poor, or `bluebuild` / `rpm-ostree` exhibit bugs tha
 | `podman push 192.168.20.7:80/...` fails with `pinging container registry` error | Podman refuses HTTP registries by default | Add `192.168.20.7:80` as an insecure registry: `sudo sh -c 'echo "unqualified-search-registries = [\"docker.io\"]" > /etc/containers/registries.conf.d/local.conf && echo "[[registry]]\nlocation=\"192.168.20.7:80\"\ninsecure=true" >> /etc/containers/registries.conf.d/local.conf'`. Or use the hostname endpoint instead. |
 | `podman pull registry.home.keithmarcus.com/...` hangs or times out | DNS cannot resolve the hostname from the VM | Check DNS on the Bazzite VM: `dig registry.home.keithmarcus.com`. If unresolved, add a static `/etc/hosts` entry: `192.168.20.7 registry.home.keithmarcus.com` or use the LAN IP endpoint directly. |
 | Built image not visible on host after `bluebuild build` | Image lives in docker-compose container storage | Export: `docker-compose exec ... podman save ... \| podman load` (see container note in Strategy C) |
+| `WARNING: image platform (linux/arm64) does not match the expected platform (linux/amd64)` | Built on `arm64` Mac without `--platform linux/amd64` | Rebuild with `bluebuild build --platform linux/amd64` (or `DOCKER_DEFAULT_PLATFORM=linux/amd64`). Verify with `podman inspect ... --format '{{.Architecture}}'` — must be `amd64`. |
+| Cross-arch build fails with `exec format error` or `standard_init_linux.go` error | Container runtime lacks `qemu-user-static` for arm64→x86_64 emulation | For podman: `sudo podman run --rm --privileged multiarch/qemu-user-static --reset -p yes`. For Docker Desktop: enable "Use Rosetta" in Settings → General. Test with `podman run --rm --platform linux/amd64 alpine uname -m`. |
 
 ### Signature Verification
 
