@@ -313,7 +313,7 @@ docker push 192.168.20.7:80/bazzite-moonlight:latest
 
 ###### Pull and Rebase on the Destination
 
-On the Bazzite VM, pull from the LAN registry and rebase:
+On the Bazzite VM, pull from the LAN registry, retag for `containers-storage:`, and rebase:
 
 ```bash
 # Pull via hostname (TLS via Caddy)
@@ -324,15 +324,26 @@ podman inspect registry.home.keithmarcus.com/bazzite-moonlight:latest \
   --format '{{.Architecture}}'
 # Must output: amd64
 
-# OR pull via LAN IP and verify
-podman pull --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
-podman inspect 192.168.20.7:80/bazzite-moonlight:latest \
-  --format '{{.Architecture}}'
+# ⚠️ CRITICAL: containers-storage: transport requires localhost/ prefix.
+# Retag the pulled image so rpm-ostree can find it in local storage.
+podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest \
+  localhost/bazzite-moonlight:latest
 
-# Then rebase to the locally-pulled image
+# Rebase to the retagged local image
+rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
+systemctl reboot
+
+# OR pull via LAN IP — same retag required
+podman pull --tls-verify=false 192.168.20.7:80/bazzite-moonlight:latest
+podman tag 192.168.20.7:80/bazzite-moonlight:latest localhost/bazzite-moonlight:latest
 rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
 systemctl reboot
 ```
+
+> **Why retag?** The `containers-storage:` transport in `rpm-ostree` does not accept registry-prefixed references like `registry.home.keithmarcus.com/name:tag`. Images must be tagged with a `localhost/` prefix (e.g., `localhost/bazzite-moonlight:latest`) for `rpm-ostree` to find them in local podman storage. Attempting to rebase without retagging produces:
+> ```
+> error: reference "registry.home.keithmarcus.com/bazzite-moonlight:latest" does not resolve to an image ID
+> ```
 
 ###### Incremental Rebuilds
 
@@ -344,8 +355,10 @@ bluebuild build recipes/recipe.yml --platform linux/amd64
 docker tag localhost/bazzite-moonlight:latest registry.home.keithmarcus.com/bazzite-moonlight:latest
 docker push registry.home.keithmarcus.com/bazzite-moonlight:latest
 
-# On Bazzite VM — pulls only changed layers (podman)
+# On Bazzite VM — pull, retag, rebase (podman)
 podman pull registry.home.keithmarcus.com/bazzite-moonlight:latest
+podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest \
+  localhost/bazzite-moonlight:latest
 rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest
 systemctl reboot
 ```
@@ -416,6 +429,7 @@ When network conditions are poor, or `bluebuild` / `rpm-ostree` exhibit bugs tha
 | `docker push 192.168.20.7:80/...` fails with `http: server gave HTTP response to HTTPS client` | Docker requires `insecure-registries` config for HTTP | Add `192.168.20.7:80` to `~/.colima/default/colima.yaml` under `docker.insecure-registries`, then `colima restart`. Or use the hostname endpoint instead. |
 | `podman pull registry.home.keithmarcus.com/...` hangs or times out | DNS cannot resolve the hostname from the VM | Check DNS on the Bazzite VM: `dig registry.home.keithmarcus.com`. If unresolved, add a static `/etc/hosts` entry: `192.168.20.7 registry.home.keithmarcus.com` or use the LAN IP endpoint directly. |
 | Built image not visible on host after `bluebuild build` | Image lives in docker-compose container storage | Export: `docker-compose exec ... docker save ... \| docker load` (see container note in Strategy C) |
+| `rpm-ostree rebase` fails with `reference "registry.home.keithmarcus.com/...:latest" does not resolve to an image ID` | `containers-storage:` transport does not accept registry-prefixed image references | Retag the pulled image: `podman tag registry.home.keithmarcus.com/bazzite-moonlight:latest localhost/bazzite-moonlight:latest`. Then rebase to `ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest`. |
 | `WARNING: image platform (linux/arm64) does not match the expected platform (linux/amd64)` | Built on `arm64` Mac without `--platform linux/amd64` | Rebuild with `bluebuild build recipes/recipe.yml --platform linux/amd64`. Verify with `docker inspect ... --format '{{.Architecture}}'` — must be `amd64`. |
 | Cross-arch build fails with `exec format error` | Colima missing x86_64 emulation support | Ensure colima config has `rosetta: true` and `binfmt: true`. Verify: `docker run --rm --platform linux/amd64 alpine uname -m` — should output `x86_64`. If not, `colima delete && colima start --arch host --vm-type vz --rosetta`. |
 
