@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
+
+type: script
+scripts:
+  - >-
+    TABBY_VER=$(curl -sL
+    https://github.com/Eugeny/tabby/releases/latest/download/latest-linux.yml
+    | grep '^version:' | awk '{print $2}') &&
+    ARCH=$(rpm --eval '%{_arch}') &&
+    rpm-ostree install
+    "https://github.com/Eugeny/tabby/releases/download/v${TABBY_VER}/tabby-${TABBY_VER}-linux-${ARCH}.rpm"
