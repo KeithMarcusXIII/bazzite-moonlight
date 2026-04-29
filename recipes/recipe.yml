@@ -15,4 +15,5 @@ modules:
   - from-file: common-packages.yml
   - from-file: common-flatpaks.yml
   - from-file: common-dotfiles.yml
+  - from-file: tabby.yml
   - type: signing # this sets up the proper policy & signing files for signed images to work fully
