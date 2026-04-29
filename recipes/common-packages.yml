@@ -6,14 +6,17 @@ repos:
     enable:
       # - atim/starship
       - jdxcode/mise
+      - sneexy/zen-browser
 install:
   packages:
     - papirus-icon-theme
     - mise
+    - zen-browser
 remove:
   packages:
+    - firefox
     # - virt-manager
     - hhd
     - hhd-ui
-    - vscode
+    - code
   auto-remove: true
