@@ -5,3 +5,4 @@ cosign.private
 .agents
 _bmad**
 .bluebuild-scripts_*
+/.bluebuild-scripts_*
