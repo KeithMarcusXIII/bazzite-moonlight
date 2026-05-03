@@ -1,7 +1,7 @@
 ---
 # yaml-language-server: $schema=https://schema.blue-build.org/module-v1.json
 
-type: default-flatpaks
+type: managed-flatpaks
 configurations:
   - notify: false # Send notification after install/uninstall is finished (true/false)
     scope: system
@@ -9,9 +9,12 @@ configurations:
     install: # system flatpaks we want all users to have and not remove
       - io.github.celluloid_player.Celluloid
       - com.github.jeromerobert.pdfarranger
-      - org.libreoffice.LibreOffice
-      - com.google.AndroidStudio
       - io.github.realmazharhussain.GdmSettings
       - it.mijorus.gearlever
+    remove:
+      - org.libreoffice.LibreOffice
+      - org.mozilla.firefox
+  - scope: user
+    install:
+      - com.google.AndroidStudio
       - com.vscodium.codium
-  - scope: user # Also add Flathub user repo, but no user packages
