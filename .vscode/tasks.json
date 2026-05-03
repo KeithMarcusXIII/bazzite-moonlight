@@ -1,0 +1,294 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "commitMessage",
+      "type": "promptString",
+      "description": "Commit message",
+      "default": "feat: update recipes and files"
+    },
+    {
+      "id": "registryEndpoint",
+      "type": "pickString",
+      "description": "Registry endpoint for push",
+      "options": [
+        "registry.home.keithmarcus.com",
+        "192.168.20.7:80"
+      ],
+      "default": "registry.home.keithmarcus.com"
+    },
+    {
+      "id": "imageTag",
+      "type": "promptString",
+      "description": "Image tag (default: latest)",
+      "default": "latest"
+    },
+    {
+      "id": "recipeFile",
+      "type": "pickString",
+      "description": "Recipe file to build",
+      "options": [
+        "recipes/recipe.yml",
+        "recipes/recipe-experiment.yml"
+      ],
+      "default": "recipes/recipe.yml"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "📦 Build: Local Image (x86_64)",
+      "type": "shell",
+      "command": "bluebuild build ${input:recipeFile} --platform linux/amd64",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Build: With Registry Cache & Push (Optimized)",
+      "type": "shell",
+      "command": "echo '=== Building with registry cache (--cache-layers + zstd + retry) ==='; echo \"Recipe: ${input:recipeFile}\"; echo \"Registry: ${input:registryEndpoint}\"; bluebuild build ${input:recipeFile} --platform linux/amd64 --push --registry ${input:registryEndpoint} --cache-layers --compression-format zstd --retry-push; echo '✅ Build + push + cache complete'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Build: Verify Architecture",
+      "type": "shell",
+      "command": "echo '--- Image Listing ---'; docker images localhost/bazzite-moonlight; echo ''; echo '--- Architecture Check ---'; ARCH=$(docker inspect localhost/bazzite-moonlight:latest --format '{{.Architecture}}'); echo \"Detected: ${ARCH}\"; if [ \"${ARCH}\" = \"amd64\" ]; then echo '✅ Architecture is amd64 (correct for x86_64 target)'; else echo '❌ WARNING: Expected amd64 but got '${ARCH}' — rebuild with --platform linux/amd64'; fi",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔄 Build Pipeline: Local (Build + Verify)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "📦 Build: Local Image (x86_64)",
+        "📦 Build: Verify Architecture"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "🔄 Build Pipeline: Optimized with Cache (Build + Push + Verify)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "📦 Build: With Registry Cache & Push (Optimized)",
+        "📦 Build: Verify Architecture"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Push: Tag Image for Registry",
+      "type": "shell",
+      "command": "ENDPOINT='${input:registryEndpoint}'; TAG='${input:imageTag}'; echo \"Tagging localhost/bazzite-moonlight:latest → ${ENDPOINT}/bazzite-moonlight:${TAG}\"; docker tag localhost/bazzite-moonlight:latest ${ENDPOINT}/bazzite-moonlight:${TAG}; echo '✅ Tagged successfully'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Push: Image to Registry",
+      "type": "shell",
+      "command": "ENDPOINT='${input:registryEndpoint}'; TAG='${input:imageTag}'; echo \"Pushing ${ENDPOINT}/bazzite-moonlight:${TAG} ...\"; docker push ${ENDPOINT}/bazzite-moonlight:${TAG}; echo '✅ Push complete'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 Deploy: Legacy Build-Tag-Push (Strategy C)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "📦 Build: Local Image (x86_64)",
+        "📦 Build: Verify Architecture",
+        "📦 Push: Tag Image for Registry",
+        "📦 Push: Image to Registry"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 Deploy: Optimized Build & Push to Registry",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "📦 Build: With Registry Cache & Push (Optimized)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 Deploy: Push Existing Image to Registry",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "📦 Push: Tag Image for Registry",
+        "📦 Push: Image to Registry"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 Deploy: Tarball via SSH (Strategy A)",
+      "type": "shell",
+      "command": "echo 'Saving and transferring image to bazzite.local.keithmarcus.com ...'; docker save localhost/bazzite-moonlight:latest | ssh bazzite.local.keithmarcus.com sudo podman load; echo '✅ Transfer complete — now rebase on the VM with:'; echo '  rpm-ostree rebase ostree-unverified-image:containers-storage:localhost/bazzite-moonlight:latest'; echo '  systemctl reboot'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧪 Experiment: Thin Overlay Build & Push",
+      "type": "shell",
+      "command": "echo '=== Thin overlay experiment build ==='; bluebuild build recipes/recipe-experiment.yml --platform linux/amd64 --push --registry ${input:registryEndpoint} --cache-layers --compression-format zstd --retry-push; echo '✅ Experiment image built and pushed'; echo '➡️  On VM, rebase with:'; echo \"  rpm-ostree rebase ostree-unverified-image:registry:${input:registryEndpoint}/bazzite-moonlight-experiment:latest\"; echo '  systemctl reboot'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔀 Git: Push bazzite-moonlight Subtree Changes",
+      "type": "shell",
+      "command": "echo 'Pushing subtree changes from homelab → standalone bazzite-moonlight repo ...'; cd /Users/digitsolu/dev/homelab && git subtree push --prefix=common/ublue/bazzite-moonlight bazzite-moonlight main; echo '✅ Subtree push complete'",
+      "options": {
+        "cwd": "/Users/digitsolu/dev/homelab"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔀 Git: Push Dotfiles Subtree Changes",
+      "type": "shell",
+      "command": "echo 'Pushing dotfiles subtree changes from homelab → standalone dotfiles repo ...'; cd /Users/digitsolu/dev/homelab && git subtree push --prefix=common/ublue/bazzite-moonlight/dotfiles dotfiles main; echo '✅ Dotfiles subtree push complete'",
+      "options": {
+        "cwd": "/Users/digitsolu/dev/homelab"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔀 Git: Pull Dotfiles Subtree Updates",
+      "type": "shell",
+      "command": "echo 'Pulling latest dotfiles from standalone repo into homelab subtree ...'; cd /Users/digitsolu/dev/homelab && git subtree pull --prefix=common/ublue/bazzite-moonlight/dotfiles dotfiles main; echo '✅ Dotfiles subtree pull complete'",
+      "options": {
+        "cwd": "/Users/digitsolu/dev/homelab"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔀 Git: Pull BlueBuild Modules Updates",
+      "type": "shell",
+      "command": "cd /Users/digitsolu/dev/homelab && echo 'Fetching latest bluebuild-modules ...' && git fetch bluebuild-modules main && echo 'Checking out remote branch for split ...' && git checkout -b bb-temp bluebuild-modules/main && echo 'Splitting module subtree ...' && git subtree split --prefix=\"modules/default-flatpaks\" -b bb-split && echo 'Returning to main ...' && git checkout main && echo 'Pulling subtree update ...' && git subtree pull --prefix=\"common/ublue/bazzite-moonlight/modules/default-flatpaks\" bb-split && echo 'Cleaning up temp branches ...' && git branch -D bb-temp bb-split && echo '✅ BlueBuild modules updated'",
+      "options": {
+        "cwd": "/Users/digitsolu/dev/homelab"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔀 Git: Commit and Push All Subtrees",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "🔀 Git: Push bazzite-moonlight Subtree Changes",
+        "🔀 Git: Push Dotfiles Subtree Changes"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "🔍 Verify: CI Image Signature",
+      "type": "shell",
+      "command": "cosign verify --key cosign.pub ghcr.io/keithmarcusxiii/bazzite-moonlight",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧹 Clean: Prune Colima Docker Storage",
+      "type": "shell",
+      "command": "echo 'Pruning unused docker data in colima ...'; docker system prune -a --volumes; echo '✅ Prune complete'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧪 Test: Cross-Arch Emulation Check",
+      "type": "shell",
+      "command": "echo 'Testing x86_64 emulation in colima ...'; RESULT=$(docker run --rm --platform linux/amd64 alpine uname -m 2>&1); if [ \"${RESULT}\" = \"x86_64\" ]; then echo '✅ Cross-arch emulation working (output: '${RESULT}')'; else echo '❌ Emulation FAILED (output: '${RESULT}') — ensure colima has rosetta: true and binfmt: true'; fi",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

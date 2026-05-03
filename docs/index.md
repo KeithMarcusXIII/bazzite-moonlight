@@ -27,6 +27,10 @@
 - [Development Guide](./development-guide.md) — Local setup, recipe development, and common tasks
 - [Deployment Guide](./deployment-guide.md) — CI/CD pipeline, build process, and consumer installation
 
+### Build Optimization
+
+- [Registry Cache & Iteration Strategies](./build-optimization-registry-cache.md) — Local build cache, `--cache-layers`, thin overlay recipes, module reordering, and advanced `bluebuild build` CLI options for faster iteration
+
 ### Optional Documentation
 
 Documents not applicable to this infrastructure-as-code project:
