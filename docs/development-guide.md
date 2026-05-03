@@ -41,6 +41,103 @@ git subtree pull --prefix=dotfiles https://github.com/KeithMarcusXIII/dotfiles.g
 
 > **Note:** The `dotfiles/` directory with its own `.git` is tracked as a single merge commit in the host repo. The dotfiles repo's full history remains on GitHub and is only squashed into the host on add/pull.
 
+### Initialize the BlueBuild Modules Subtree
+
+The [`modules/`](../modules/) directory is populated from the community [blue-build/modules](https://github.com/blue-build/modules) repository via git subtree. This gives you local copies of reusable BlueBuild module definitions (e.g., `default-flatpaks`, `chezmoi`, `brew`) without copying them manually.
+
+> **Important:** All subtree commands must run from the **homelab** repository root (`/Users/digitsolu/dev/homelab`), not from `bazzite-moonlight/`. This is because `bazzite-moonlight` is itself a git subtree within homelab — only the parent repo owns the git history. Adjust the `--prefix` paths below if your directory layout differs.
+
+#### First-Time Setup
+
+Add the remote, fetch, and pull a specific module directory as a subtree:
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+# 1. Register the remote
+git remote add bluebuild-modules https://github.com/blue-build/modules.git
+git fetch bluebuild-modules main
+
+# 2. Temporarily checkout the remote — git subtree split requires the
+#    --prefix to exist in the working tree
+git checkout -b bb-temp bluebuild-modules/main
+
+# 3. Split: extract only the desired module directory into a synthetic branch
+git subtree split --prefix="modules/default-flatpaks" -b bb-split
+
+# 4. Return to your branch
+git checkout main
+
+# 5. Add the split branch as a subtree at the target path
+git subtree add \
+  --prefix="common/ublue/bazzite-moonlight/modules/default-flatpaks" \
+  bb-split
+
+# 6. Clean up temporary branches
+git branch -D bb-temp bb-split
+```
+
+**What happens:**
+- `git subtree split --prefix="modules/default-flatpaks"` extracts only that directory from the remote's history, stripping the path prefix. Both `v1/` and `v2/` (and any other subdirectories) are included since the prefix targets their parent.
+- `git subtree add` places the split content at `common/ublue/bazzite-moonlight/modules/default-flatpaks/` in your homelab repo.
+- The temp checkout (`bb-temp`) works around a `git subtree split` quirk: it validates the `--prefix` against the local working tree, not just the remote commit. Checking out the remote branch makes the prefix available so the split can proceed.
+
+#### Pulling Updates
+
+When the upstream `blue-build/modules` repo publishes changes to a module you've already added:
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+git fetch bluebuild-modules main
+git checkout -b bb-temp bluebuild-modules/main
+git subtree split --prefix="modules/default-flatpaks" -b bb-split
+git checkout main
+
+git subtree pull \
+  --prefix="common/ublue/bazzite-moonlight/modules/default-flatpaks" \
+  bb-split
+
+git branch -D bb-temp bb-split
+```
+
+> **Note:** This is a **read-only** workflow. There is no pushing back to `bluebuild-modules` — changes to module behaviour should be made in your own recipe files, not in the subtree.
+
+#### Adding Additional Modules from the Same Remote
+
+To pull another module directory from `bluebuild-modules` (e.g., `modules/chezmoi`, `modules/brew`, `modules/script`), repeat the split+add pattern with a different `--prefix`:
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+# Example: adding the chezmoi module
+git fetch bluebuild-modules main
+git checkout -b bb-temp bluebuild-modules/main
+git subtree split --prefix="modules/chezmoi" -b bb-split
+git checkout main
+
+git subtree add \
+  --prefix="common/ublue/bazzite-moonlight/modules/chezmoi" \
+  bb-split
+
+git branch -D bb-temp bb-split
+```
+
+Each module becomes an independent subtree entry in the homelab repo — they can be updated individually with `git subtree pull`. The resulting `modules/` directory will look like:
+
+```
+bazzite-moonlight/modules/
+├── default-flatpaks/    ← subtree from modules/default-flatpaks
+│   ├── module.yml
+│   ├── v1/
+│   └── v2/
+├── chezmoi/             ← subtree from modules/chezmoi (future)
+├── brew/                ← subtree from modules/brew (future)
+└── script/              ← subtree from modules/script (future)
+```
+
+> **Consistency tip:** Always map the source module name directly (e.g., `modules/default-flatpaks` → `modules/default-flatpaks`). This keeps BlueBuild `from-file` references predictable and avoids confusion when the origin needs to be traced.
+
 ### Repository Configuration
 
 The primary build pipeline runs in GitHub Actions. However, **local builds are fully supported** via the [`bluebuild` CLI](https://blue-build.org/how-to/local/) — enabling fast iteration without waiting for CI, and working around intermittent network or daemon issues.
@@ -170,7 +267,7 @@ In [`gnome-extensions.yml`](../recipes/gnome-extensions.yml):
 
 ## Custom Modules
 
-The [`modules/`](../modules/) directory holds custom BlueBuild module definitions. Add custom modules here when the built-in types (dnf, flatpak, chezmoi, etc.) don't cover your needs.
+The [`modules/`](../modules/) directory holds reusable BlueBuild module definitions pulled from the community [blue-build/modules](https://github.com/blue-build/modules) repository. See [Initialize the BlueBuild Modules Subtree](#initialize-the-bluebuild-modules-subtree) above for setup and update procedures.
 
 ## Testing
 
