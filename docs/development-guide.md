@@ -10,7 +10,9 @@
   - [For Image Developers](#for-image-developers)
 - [Environment Setup](#environment-setup)
   - [Clone the Repository](#clone-the-repository)
+  - [Pushing Changes to the bazzite-moonlight Subtree](#pushing-changes-to-the-bazzite-moonlight-subtree)
   - [Initialize the Dotfiles Subtree](#initialize-the-dotfiles-subtree)
+    - [Pushing Changes to the Dotfiles Subtree](#pushing-changes-to-the-dotfiles-subtree)
   - [Initialize the BlueBuild Modules Subtree](#initialize-the-bluebuild-modules-subtree)
     - [First-Time Setup](#first-time-setup)
     - [Pulling Updates](#pulling-updates)
@@ -68,6 +70,38 @@ git clone https://github.com/keithmarcusxiii/bazzite-moonlight.git
 cd bazzite-moonlight
 ```
 
+### Pushing Changes to the bazzite-moonlight Subtree
+
+The `bazzite-moonlight/` directory inside the homelab monorepo at `common/ublue/bazzite-moonlight/` is itself a git subtree — added from [`https://github.com/keithmarcusxiii/bazzite-moonlight`](https://github.com/keithmarcusxiii/bazzite-moonlight). This means changes to recipes, files, scripts, or any other content within that subtree can be pushed back to the standalone repo.
+
+> **Important reminder:** All subtree commands must run from the **homelab** repository root (`/Users/digitsolu/dev/homelab`), not from `bazzite-moonlight/`. The homelab repo owns the git history — `bazzite-moonlight` is a subtree within it, not an independent checkout.
+
+#### Pushing Changes
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+# Push subtree changes back to the standalone bazzite-moonlight repo
+git subtree push \
+  --prefix=common/ublue/bazzite-moonlight \
+  https://github.com/keithmarcusxiii/bazzite-moonlight.git \
+  main
+```
+
+Or with a named remote for convenience:
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+# One-time remote setup
+git remote add bazzite-moonlight https://github.com/keithmarcusxiii/bazzite-moonlight.git
+
+# Subsequent pushes
+git subtree push --prefix=common/ublue/bazzite-moonlight bazzite-moonlight main
+```
+
+> **When to push:** This is useful when you want the standalone `bazzite-moonlight` repo to reflect changes that were made within the homelab monorepo — for example, after iterating on recipes or files locally within the homelab context. The standalone repo can then be used independently or trigger its own CI builds.
+
 ### Initialize the Dotfiles Subtree
 
 The dotfiles repository at `dotfiles/` is managed as a git subtree (referenced in the chezmoi recipe [`common-dotfiles.yml`](../recipes/common-dotfiles.yml)). After cloning the main project, add the subtree the first time:
@@ -80,9 +114,42 @@ git subtree add --prefix=dotfiles https://github.com/KeithMarcusXIII/dotfiles.gi
 git subtree pull --prefix=dotfiles https://github.com/KeithMarcusXIII/dotfiles.git main
 ```
 
-`git subtree add` creates the `dotfiles/` directory and registers it as a subtree in the host repo. After that, `git subtree pull` fetches updates. Changes made inside `dotfiles/` should be committed and pushed from within that directory — the subtree maintains its own history on GitHub.
+`git subtree add` creates the `dotfiles/` directory and registers it as a subtree in the host repo. After that, `git subtree pull` fetches updates. Changes made inside `dotfiles/` are committed in the homelab repo, then pushed back to the dotfiles origin using `git subtree push` (see below).
 
-> **Note:** The `dotfiles/` directory with its own `.git` is tracked as a single merge commit in the host repo. The dotfiles repo's full history remains on GitHub and is only squashed into the host on add/pull.
+> **Note:** The `dotfiles/` subtree is tracked as a single merge commit in the host repo. The dotfiles repo's full history remains on GitHub and is only squashed into the host on add/pull.
+
+#### Pushing Changes to the Dotfiles Subtree
+
+When you've modified files inside `dotfiles/` and committed those changes in the homelab repo, push them back to the standalone dotfiles repository so they're available independently (e.g., for use by chezmoi on other machines):
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+# Push subtree changes back to the dotfiles origin
+git subtree push \
+  --prefix=common/ublue/bazzite-moonlight/dotfiles \
+  https://github.com/KeithMarcusXIII/dotfiles.git \
+  main
+```
+
+Or, for convenience, set up a named remote so you don't need to type the URL each time:
+
+```bash
+cd /Users/digitsolu/dev/homelab
+
+# One-time remote setup
+git remote add dotfiles https://github.com/KeithMarcusXIII/dotfiles.git
+
+# Subsequent pushes
+git subtree push --prefix=common/ublue/bazzite-moonlight/dotfiles dotfiles main
+```
+
+**What happens:**
+- `git subtree push` splits the subtree history from the homelab repo, extracting only commits that touched the `dotfiles/` path, then pushes that extracted history to the remote.
+- The dotfiles repo on GitHub receives those commits as if they were made directly in that repo — preserving full authorship, messages, and timestamps.
+- The homelab repo's commits remain intact; the subtree push is a separate operation that doesn't alter the homelab history.
+
+> **Workflow tip:** Commit changes to the homelab repo first (e.g., `git add common/ublue/bazzite-moonlight/dotfiles/ && git commit`), then `git subtree push` to the dotfiles remote. Push the homelab repo to origin (`git push origin main`) separately — the two operations are independent.
 
 ### Initialize the BlueBuild Modules Subtree
 
