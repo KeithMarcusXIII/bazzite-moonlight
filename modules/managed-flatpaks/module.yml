@@ -1,0 +1,23 @@
+name: managed-flatpaks
+shortdesc: The managed-flatpaks module can be used to install or uninstall flatpaks from a configurable remote on every boot.
+versions:
+  - version: v1
+    example: |
+      - type: managed-flatpaks
+        configurations:
+          - scope: user
+            repo:
+              title: Flathub (user)
+          - notify: true
+            scope: system
+            repo:
+              title: Flathub (system)
+            install:
+              - org.mozilla.firefox
+              - com.github.tchx84.Flatseal
+              - io.github.flattool.Warehouse
+              - io.missioncenter.MissionCenter
+              - com.github.rafostar.Clapper
+              - org.gnome.Loupe
+            remove:
+              - org.gnome.eog
