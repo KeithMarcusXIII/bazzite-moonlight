@@ -1,0 +1,15 @@
+---
+# yaml-language-server: $schema=https://schema.blue-build.org/module-v1.json
+
+type: dnf
+# Moonlight/Mini-PC specific DNF operations.
+# Uncomment and add packages as needed.
+# Examples:
+#   - WiFi/Bluetooth firmware (iwlwifi-firmware)
+#   - Intel media drivers (intel-media-driver)
+#   - Power management (powertop)
+#   - Remove unnecessary GPU firmware (nvidia-gpu-firmware)
+install:
+  packages: []
+remove:
+  packages: []
