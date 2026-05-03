@@ -6,3 +6,4 @@ bluebuild-scripts_*
 _bmad*/
 .agent
 .agents
+/.bluebuild-scripts_*
