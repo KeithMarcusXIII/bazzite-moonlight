@@ -1,8 +1,8 @@
-cosign.key
-cosign.private
+/cosign.key
+/cosign.private
 /Containerfile
+.DS_Store
+bluebuild-scripts_*
+_bmad*/
 .agent
 .agents
-_bmad**
-.bluebuild-scripts_*
-/.bluebuild-scripts_*
