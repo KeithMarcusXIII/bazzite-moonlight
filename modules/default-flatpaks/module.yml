@@ -56,3 +56,20 @@ versions:
               - io.missioncenter.MissionCenter
               - com.github.rafostar.Clapper
               - org.gnome.Loupe
+  - version: v3
+    example: |
+      - type: default-flatpaks@v3
+        configurations:
+          - scope: user
+            repo:
+              title: Flathub (user)
+          - notify: true
+            scope: system
+            repo:
+              title: Flathub (system)
+            install:
+              - org.mozilla.firefox
+              - org.gnome.Loupe
+            remove:
+              - org.gnome.eog
+              - org.kde.okular

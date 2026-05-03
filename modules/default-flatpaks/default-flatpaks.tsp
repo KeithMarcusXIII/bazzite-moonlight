@@ -6,6 +6,7 @@ using TypeSpec.JsonSchema;
 union DefaultFlatpaksModule {
     DefaultFlatpaksV1;
     DefaultFlatpaksV2;
+    DefaultFlatpaksV3;
 }
 
 @jsonSchema("/modules/default-flatpaks-latest.json")
@@ -90,5 +91,40 @@ model DefaultFlatpaksV2 {
 
         /** List of Flatpak IDs to install from the repo. */
         install?: Array<string>;
+    }>;
+}
+
+@jsonSchema("/modules/default-flatpaks-v3.json")
+model DefaultFlatpaksV3 {
+    /** The default-flatpaks module can be used to install or uninstall Flatpaks from a configurable remote on every boot.
+     * using version: v3
+     * https://blue-build.org/reference/modules/default-flatpaks/
+     */
+    type: "default-flatpaks@v3";
+
+    configurations: Array<{
+        /** Whether to notify users about Flatpak installation. */
+        notify?: boolean = true;
+
+        /** Whether to perform this configuration for system-wide or separately for each user. */
+        scope?: "system" | "user" = "user";
+
+        /** Details of the Flatpak repository to set up. If omitted, Flathub will be used by default. */
+        repo?: {
+            /** Flatpak repository URL. */
+            url?: string = "https://dl.flathub.org/repo/flathub.flatpakrepo";
+
+            /** Flatpak repository name. */
+            name?: string = "flathub";
+
+            /** Flatpak repository formatted title. */
+            title?: string = "Flathub";
+        };
+
+        /** List of Flatpak IDs to install from the repo. */
+        install?: Array<string>;
+
+        /** List of Flatpak IDs to remove. */
+        remove?: Array<string>;
     }>;
 }
