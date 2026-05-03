@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://schema.blue-build.org/recipe-v1.json
+
+type: dnf
+repos:
+  copr:
+    enable:
+      # - atim/starship
+      - jdxcode/mise
+      - sneexy/zen-browser
+install:
+  packages:
+    - papirus-icon-theme
+    - mise
+    - zen-browser
+remove:
+  packages:
+    - hhd
+    - hhd-ui
+    - code
+  auto-remove: true
