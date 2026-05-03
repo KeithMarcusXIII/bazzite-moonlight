@@ -38,7 +38,7 @@
     {
       "label": "📦 Build: Local Image (x86_64)",
       "type": "shell",
-      "command": "bluebuild build ${input:recipeFile} --platform linux/amd64",
+      "command": "bluebuild build ${input:recipeFile} --platform linux/amd64 --skip-validation",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -56,7 +56,7 @@
     {
       "label": "📦 Build: With Registry Cache & Push (Optimized)",
       "type": "shell",
-      "command": "echo '=== Building with registry cache (--cache-layers + zstd + retry) ==='; echo \"Recipe: ${input:recipeFile}\"; echo \"Registry: ${input:registryEndpoint}\"; bluebuild build ${input:recipeFile} --platform linux/amd64 --push --registry ${input:registryEndpoint} --cache-layers --compression-format zstd --retry-push; echo '✅ Build + push + cache complete'",
+      "command": "echo '=== Building with registry cache (--cache-layers + zstd + retry) ==='; echo \"Recipe: ${input:recipeFile}\"; echo \"Registry: ${input:registryEndpoint}\"; bluebuild build ${input:recipeFile} --platform linux/amd64 --skip-validation --push --registry ${input:registryEndpoint} --cache-layers --compression-format zstd --retry-push; echo '✅ Build + push + cache complete'",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -172,7 +172,7 @@
     {
       "label": "🧪 Experiment: Thin Overlay Build & Push",
       "type": "shell",
-      "command": "echo '=== Thin overlay experiment build ==='; bluebuild build recipes/recipe-experiment.yml --platform linux/amd64 --push --registry ${input:registryEndpoint} --cache-layers --compression-format zstd --retry-push; echo '✅ Experiment image built and pushed'; echo '➡️  On VM, rebase with:'; echo \"  rpm-ostree rebase ostree-unverified-image:registry:${input:registryEndpoint}/bazzite-moonlight-experiment:latest\"; echo '  systemctl reboot'",
+      "command": "echo '=== Thin overlay experiment build ==='; bluebuild build recipes/recipe-experiment.yml --platform linux/amd64 --skip-validation --push --registry ${input:registryEndpoint} --cache-layers --compression-format zstd --retry-push; echo '✅ Experiment image built and pushed'; echo '➡️  On VM, rebase with:'; echo \"  rpm-ostree rebase ostree-unverified-image:registry:${input:registryEndpoint}/bazzite-moonlight-experiment:latest\"; echo '  systemctl reboot'",
       "options": {
         "cwd": "${workspaceFolder}"
       },
