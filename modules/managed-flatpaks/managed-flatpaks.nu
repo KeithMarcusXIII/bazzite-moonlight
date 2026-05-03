@@ -71,21 +71,21 @@ def main [configStr: string] {
     print "Setting up Flatpak setup services..."
 
     mkdir /usr/lib/systemd/system/
-    cp $"($env.MODULE_DIRECTORY)/post-boot/system-flatpak-setup.service" /usr/lib/systemd/system/system-flatpak-setup.service
-    cp $"($env.MODULE_DIRECTORY)/post-boot/system-flatpak-setup.timer" /usr/lib/systemd/system/system-flatpak-setup.timer
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/system-flatpak-setup.service" /usr/lib/systemd/system/system-flatpak-setup.service
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/system-flatpak-setup.timer" /usr/lib/systemd/system/system-flatpak-setup.timer
     mkdir /usr/lib/systemd/user/
-    cp $"($env.MODULE_DIRECTORY)/post-boot/user-flatpak-setup.service" /usr/lib/systemd/user/user-flatpak-setup.service
-    cp $"($env.MODULE_DIRECTORY)/post-boot/user-flatpak-setup.timer" /usr/lib/systemd/user/user-flatpak-setup.timer
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/user-flatpak-setup.service" /usr/lib/systemd/user/user-flatpak-setup.service
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/user-flatpak-setup.timer" /usr/lib/systemd/user/user-flatpak-setup.timer
     systemctl enable --force system-flatpak-setup.timer
     systemctl enable --force --global user-flatpak-setup.timer
 
     mkdir ($libExecPath)
-    cp $"($env.MODULE_DIRECTORY)/post-boot/system-flatpak-setup" $"($libExecPath)/system-flatpak-setup" 
-    cp $"($env.MODULE_DIRECTORY)/post-boot/user-flatpak-setup" $"($libExecPath)/user-flatpak-setup" 
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/system-flatpak-setup" $"($libExecPath)/system-flatpak-setup"
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/user-flatpak-setup" $"($libExecPath)/user-flatpak-setup"
     chmod +x $"($libExecPath)/system-flatpak-setup"
     chmod +x $"($libExecPath)/user-flatpak-setup"
 
-    cp $"($env.MODULE_DIRECTORY)/post-boot/bluebuild-flatpak-manager" "/usr/bin/bluebuild-flatpak-manager"
+    cp $"($env.MODULE_DIRECTORY)/managed-flatpaks/post-boot/bluebuild-flatpak-manager" "/usr/bin/bluebuild-flatpak-manager"
     chmod +x "/usr/bin/bluebuild-flatpak-manager"
 }
 
