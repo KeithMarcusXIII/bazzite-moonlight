@@ -13,7 +13,6 @@ configurations:
       - io.github.realmazharhussain.GdmSettings
       - it.mijorus.gearlever
     remove:
-      - org.libreoffice.LibreOffice
       - org.mozilla.firefox
   - scope: user
     install:
