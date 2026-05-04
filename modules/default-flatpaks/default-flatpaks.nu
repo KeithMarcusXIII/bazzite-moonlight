@@ -21,6 +21,21 @@ const configPath = $"($usrSharePath)/configuration.yaml"
 def main [configStr: string] {
     let config = $configStr | from yaml
     
+    let type = $config | get -i type | default ""
+    let version = if ($type | str contains "@") {
+        $type | split row "@" | last
+    } else {
+        "v2"
+    }
+
+    let postBootDir = $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot"
+    if not ($postBootDir | path exists) {
+        print $"(ansi red_bold)VERSION ERROR(ansi reset)"
+        print $"Post-boot directory not found for version '(ansi default_italic)($version)(ansi reset)'"
+        print $"Expected at: (ansi blue)($postBootDir)(ansi reset)"
+        exit 1
+    }
+    
     if ('user' in $config or 'system' in $config) {
         print $"(ansi red_bold)CONFIGURATION ERROR(ansi reset)"
         print $"(ansi yellow_reverse)HINT(ansi reset): the default-flatpaks module has been updated with breaking changes!"
@@ -71,21 +86,21 @@ def main [configStr: string] {
     print "Setting up Flatpak setup services..."
 
     mkdir /usr/lib/systemd/system/
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/system-flatpak-setup.service" /usr/lib/systemd/system/system-flatpak-setup.service
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/system-flatpak-setup.timer" /usr/lib/systemd/system/system-flatpak-setup.timer
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/system-flatpak-setup.service" /usr/lib/systemd/system/system-flatpak-setup.service
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/system-flatpak-setup.timer" /usr/lib/systemd/system/system-flatpak-setup.timer
     mkdir /usr/lib/systemd/user/
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/user-flatpak-setup.service" /usr/lib/systemd/user/user-flatpak-setup.service
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/user-flatpak-setup.timer" /usr/lib/systemd/user/user-flatpak-setup.timer
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/user-flatpak-setup.service" /usr/lib/systemd/user/user-flatpak-setup.service
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/user-flatpak-setup.timer" /usr/lib/systemd/user/user-flatpak-setup.timer
     systemctl enable --force system-flatpak-setup.timer
     systemctl enable --force --global user-flatpak-setup.timer
 
     mkdir ($libExecPath)
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/system-flatpak-setup" $"($libExecPath)/system-flatpak-setup" 
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/user-flatpak-setup" $"($libExecPath)/user-flatpak-setup" 
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/system-flatpak-setup" $"($libExecPath)/system-flatpak-setup" 
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/user-flatpak-setup" $"($libExecPath)/user-flatpak-setup" 
     chmod +x $"($libExecPath)/system-flatpak-setup"
     chmod +x $"($libExecPath)/user-flatpak-setup"
 
-    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/post-boot/bluebuild-flatpak-manager" "/usr/bin/bluebuild-flatpak-manager"
+    cp $"($env.MODULE_DIRECTORY)/default-flatpaks/($version)/post-boot/bluebuild-flatpak-manager" "/usr/bin/bluebuild-flatpak-manager"
     chmod +x "/usr/bin/bluebuild-flatpak-manager"
 }
 
