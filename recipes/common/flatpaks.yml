@@ -1,7 +1,8 @@
 ---
 # yaml-language-server: $schema=https://schema.blue-build.org/module-v1.json
 
-type: default-flatpaks
+type: default-flatpaks@v3
+source: local
 configurations:
   - notify: false # Send notification after install/uninstall is finished (true/false)
     scope: system
